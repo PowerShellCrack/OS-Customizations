@@ -37,7 +37,106 @@
 ##*===========================================================================
 ##* FUNCTIONS
 ##*===========================================================================
-Function Write-LogEntry {
+Function Test-IsISE {
+    # try...catch accounts for:
+    # Set-StrictMode -Version latest
+    try {    
+        return $psISE -ne $null;
+    }
+    catch {
+        return $false;
+    }
+}
+
+Function Get-ScriptPath {
+    If (Test-Path -LiteralPath 'variable:HostInvocation') { $InvocationInfo = $HostInvocation } Else { $InvocationInfo = $MyInvocation }
+
+    # Makes debugging from ISE easier.
+    if ($PSScriptRoot -eq "")
+    {
+        if (Test-IsISE)
+        {
+            $psISE.CurrentFile.FullPath
+            #$root = Split-Path -Parent $psISE.CurrentFile.FullPath
+        }
+        else
+        {
+            $context = $psEditor.GetEditorContext()
+            $context.CurrentFile.Path
+            #$root = Split-Path -Parent $context.CurrentFile.Path
+        }
+    }
+    else
+    {
+        #$PSScriptRoot
+        $PSCommandPath
+        #$MyInvocation.MyCommand.Path
+    }
+}
+
+Function Get-SMSTSENV{
+    param([switch]$LogPath,[switch]$NoWarning)
+    
+    Begin{
+        ## Get the name of this function
+        [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
+    }
+    Process{
+        try{
+            # Create an object to access the task sequence environment
+            $Script:tsenv = New-Object -COMObject Microsoft.SMS.TSEnvironment 
+            #test if variables exist
+            $tsenv.GetVariables()  #| % { Write-Output "$ScriptName - $_ = $($tsenv.Value($_))" }
+        }
+        catch{
+            If(${CmdletName}){$prefix = "${CmdletName} ::" }Else{$prefix = "" }
+            If(!$NoWarning){Write-Warning ("{0}Task Sequence environment not detected. Running in stand-alone mode." -f $prefix)}
+            
+            #set variable to null
+            $Script:tsenv = $null
+        }
+        Finally{
+            #set global Logpath
+            if ($tsenv){
+                #grab the progress UI
+                $Script:TSProgressUi = New-Object -ComObject Microsoft.SMS.TSProgressUI
+
+                # Query the environment to get an existing variable
+                # Set a variable for the task sequence log path
+                #$UseLogPath = $tsenv.Value("LogPath")
+                $UseLogPath = $tsenv.Value("_SMSTSLogPath")
+
+                # Convert all of the variables currently in the environment to PowerShell variables
+                $tsenv.GetVariables() | % { Set-Variable -Name "$_" -Value "$($tsenv.Value($_))" }
+            }
+            Else{
+                $UseLogPath = $env:Temp
+            }
+        }
+    }
+    End{
+        If($LogPath){return $UseLogPath}
+    }
+}
+
+Function Format-ElapsedTime($ts) {
+    $elapsedTime = ""
+    if ( $ts.Minutes -gt 0 ){$elapsedTime = [string]::Format( "{0:00} min. {1:00}.{2:00} sec.", $ts.Minutes, $ts.Seconds, $ts.Milliseconds / 10 );}
+    else{$elapsedTime = [string]::Format( "{0:00}.{1:00} sec.", $ts.Seconds, $ts.Milliseconds / 10 );}
+    if ($ts.Hours -eq 0 -and $ts.Minutes -eq 0 -and $ts.Seconds -eq 0){$elapsedTime = [string]::Format("{0:00} ms.", $ts.Milliseconds);}
+    if ($ts.Milliseconds -eq 0){$elapsedTime = [string]::Format("{0} ms", $ts.TotalMilliseconds);}
+    return $elapsedTime
+}
+
+Function Format-DatePrefix{
+    [string]$LogTime = (Get-Date -Format 'HH:mm:ss.fff').ToString()
+	[string]$LogDate = (Get-Date -Format 'MM-dd-yyyy').ToString()
+    $CombinedDateTime = "$LogDate $LogTime"
+    return ($LogDate + " " + $LogTime)
+}
+
+
+Function Write-LogEntry{
     param(
         [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
         [ValidateNotNullOrEmpty()]
@@ -103,6 +202,89 @@ Function Write-LogEntry {
             4       {If($Global:Verbose){Write-Verbose $OutputMsg}}
             default {Write-Host $OutputMsg}
         }
+    }
+}
+
+function Show-ProgressStatus
+{
+    <#
+    .SYNOPSIS
+        Shows task sequence secondary progress of a specific step
+    
+    .DESCRIPTION
+        Adds a second progress bar to the existing Task Sequence Progress UI.
+        This progress bar can be updated to allow for a real-time progress of
+        a specific task sequence sub-step.
+        The Step and Max Step parameters are calculated when passed. This allows
+        you to have a "max steps" of 400, and update the step parameter. 100%
+        would be achieved when step is 400 and max step is 400. The percentages
+        are calculated behind the scenes by the Com Object.
+    
+    .PARAMETER Message
+        The message to display the progress
+    .PARAMETER Step
+        Integer indicating current step
+    .PARAMETER MaxStep
+        Integer indicating 100%. A number other than 100 can be used.
+    .INPUTS
+         - Message: String
+         - Step: Long
+         - MaxStep: Long
+    .OUTPUTS
+        None
+    .EXAMPLE
+        Set's "Custom Step 1" at 30 percent complete
+        Show-ProgressStatus -Message "Running Custom Step 1" -Step 100 -MaxStep 300
+    
+    .EXAMPLE
+        Set's "Custom Step 1" at 50 percent complete
+        Show-ProgressStatus -Message "Running Custom Step 1" -Step 150 -MaxStep 300
+    .EXAMPLE
+        Set's "Custom Step 1" at 100 percent complete
+        Show-ProgressStatus -Message "Running Custom Step 1" -Step 300 -MaxStep 300
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string] $Message,
+        [Parameter(Mandatory=$true)]
+        [int]$Step,
+        [Parameter(Mandatory=$true)]
+        [int]$MaxStep,
+        [string]$SubMessage,
+        [int]$IncrementSteps,
+        [switch]$Outhost
+    )
+
+    Begin{
+
+        If($SubMessage){
+            $StatusMessage = ("{0} [{1}]" -f $Message,$SubMessage)
+        }
+        Else{
+            $StatusMessage = $Message
+
+        }
+    }
+    Process
+    {
+        If($Script:tsenv){
+            $Script:TSProgressUi.ShowActionProgress(`
+                $Script:tsenv.Value("_SMSTSOrgName"),`
+                $Script:tsenv.Value("_SMSTSPackageName"),`
+                $Script:tsenv.Value("_SMSTSCustomProgressDialogMessage"),`
+                $Script:tsenv.Value("_SMSTSCurrentActionName"),`
+                [Convert]::ToUInt32($Script:tsenv.Value("_SMSTSNextInstructionPointer")),`
+                [Convert]::ToUInt32($Script:tsenv.Value("_SMSTSInstructionTableSize")),`
+                $StatusMessage,`
+                $Step,`
+                $Maxstep)
+        }
+        Else{
+            Write-Progress -Activity "$Message ($Step of $Maxstep)" -Status $StatusMessage -PercentComplete (($Step / $Maxstep) * 100) -id 1
+        }
+    }
+    End{
+        Write-LogEntry $Message -Severity 1 -Outhost:$Outhost
     }
 }
 
@@ -303,42 +485,7 @@ function Remove-FolderContent{
     $total = 0 
 } 
  
-Function Test-IsISE {
-    # try...catch accounts for:
-    # Set-StrictMode -Version latest
-    try {    
-        return $psISE -ne $null;
-    }
-    catch {
-        return $false;
-    }
-}
 
-Function Get-ScriptPath {
-    If (Test-Path -LiteralPath 'variable:HostInvocation') { $InvocationInfo = $HostInvocation } Else { $InvocationInfo = $MyInvocation }
-
-    # Makes debugging from ISE easier.
-    if ($PSScriptRoot -eq "")
-    {
-        if (Test-IsISE)
-        {
-            $psISE.CurrentFile.FullPath
-            #$root = Split-Path -Parent $psISE.CurrentFile.FullPath
-        }
-        else
-        {
-            $context = $psEditor.GetEditorContext()
-            $context.CurrentFile.Path
-            #$root = Split-Path -Parent $context.CurrentFile.Path
-        }
-    }
-    else
-    {
-        #$PSScriptRoot
-        $PSCommandPath
-        #$MyInvocation.MyCommand.Path
-    }
-}
 ##*===========================================================================
 ##* VARIABLES
 ##*===========================================================================
