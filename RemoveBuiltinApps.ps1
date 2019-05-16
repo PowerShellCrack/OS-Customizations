@@ -60,40 +60,48 @@ Function Get-ScriptPath {
     }
 }
 
-Function Import-SMSTSENV{
-    ## Get the name of this function
-    [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
+Function Get-SMSTSENV{
+    param([switch]$LogPath,[switch]$NoWarning)
     
-    try{
-        # Create an object to access the task sequence environment
-        $Script:tsenv = New-Object -COMObject Microsoft.SMS.TSEnvironment 
-        #test if variables exist
-        $tsenv.GetVariables()  #| % { Write-Output "$ScriptName - $_ = $($tsenv.Value($_))" }
+    Begin{
+        ## Get the name of this function
+        [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
     }
-    catch{
-        If(${CmdletName}){$prefix = "${CmdletName} ::" }Else{$prefix = "" }
-        Write-Warning ("{0}Task Sequence environment not detected. Running in stand-alone mode." -f $prefix)
-        
-        #set variable to null
-        $Script:tsenv = $null
+    Process{
+        try{
+            # Create an object to access the task sequence environment
+            $Script:tsenv = New-Object -COMObject Microsoft.SMS.TSEnvironment 
+            #test if variables exist
+            $tsenv.GetVariables()  #| % { Write-Output "$ScriptName - $_ = $($tsenv.Value($_))" }
+        }
+        catch{
+            If(${CmdletName}){$prefix = "${CmdletName} ::" }Else{$prefix = "" }
+            If(!$NoWarning){Write-Warning ("{0}Task Sequence environment not detected. Running in stand-alone mode." -f $prefix)}
+            
+            #set variable to null
+            $Script:tsenv = $null
+        }
+        Finally{
+            #set global Logpath
+            if ($tsenv){
+                #grab the progress UI
+                $Script:TSProgressUi = New-Object -ComObject Microsoft.SMS.TSProgressUI
+
+                # Query the environment to get an existing variable
+                # Set a variable for the task sequence log path
+                #$UseLogPath = $tsenv.Value("LogPath")
+                $UseLogPath = $tsenv.Value("_SMSTSLogPath")
+
+                # Convert all of the variables currently in the environment to PowerShell variables
+                $tsenv.GetVariables() | % { Set-Variable -Name "$_" -Value "$($tsenv.Value($_))" }
+            }
+            Else{
+                $UseLogPath = $env:Temp
+            }
+        }
     }
-    Finally{
-        #set global Logpath
-        if ($tsenv){
-            #grab the progress UI
-            $Script:TSProgressUi = New-Object -ComObject Microsoft.SMS.TSProgressUI
-
-            # Query the environment to get an existing variable
-            # Set a variable for the task sequence log path
-            #$Global:Logpath = $tsenv.Value("LogPath")
-            $Global:Logpath = $tsenv.Value("_SMSTSLogPath")
-
-            # Or, convert all of the variables currently in the environment to PowerShell variables
-            $tsenv.GetVariables() | % { Set-Variable -Name "$_" -Value "$($tsenv.Value($_))" }
-        }
-        Else{
-            $Global:Logpath = $env:TEMP
-        }
+    End{
+        If($LogPath){return $UseLogPath}
     }
 }
 
@@ -112,6 +120,7 @@ Function Format-DatePrefix{
     $CombinedDateTime = "$LogDate $LogTime"
     return ($LogDate + " " + $LogTime)
 }
+
 
 Function Write-LogEntry{
     param(
@@ -313,7 +322,7 @@ foreach ($App in $AppArrayList) {
     # If application name not in appx package white list, remove AppxPackage and AppxProvisioningPackage
     if (($App.Name -in $WhiteListedApps)) {
         $status = "Skipping excluded application package: $($App.Name)"
-        Write-LogEntry -Value $status -Outhost
+        Write-LogEntry -Message $status -Outhost
     }
     else {
         # Gather package names
@@ -323,33 +332,33 @@ foreach ($App in $AppArrayList) {
         # Attempt to remove AppxPackage
         if ($AppPackageFullName -ne $null) {
             $status = "Removing application package: $($App.Name)"
-            Write-LogEntry -Value $status -Outhost
+            Write-LogEntry -Message $status -Outhost
             try {
                 Remove-AppxPackage -Package $AppPackageFullName -AllUsers -ErrorAction Stop | Out-Null
-                Write-LogEntry -Value "Successfully removed application package: $($App.Name)" -Outhost
+                Write-LogEntry -Message "Successfully removed application package: $($App.Name)" -Outhost
                 $c++
             }
             catch [System.Exception] {
-                Write-LogEntry -Value "Failed removing AppxPackage: $($_.Exception.Message)" -Severity 3 -Outhost
+                Write-LogEntry -Message "Failed removing AppxPackage: $($_.Exception.Message)" -Severity 3 -Outhost
             }
         }
         else {
-            Write-LogEntry -Value "Unable to locate AppxPackage for app: $($App.Name)" -Outhost
+            Write-LogEntry -Message "Unable to locate AppxPackage for app: $($App.Name)" -Outhost
         }
 
         # Attempt to remove AppxProvisioningPackage
         if ($AppProvisioningPackageName -ne $null) {
-            Write-LogEntry -Value "Removing application provisioning package: $($AppProvisioningPackageName)"
+            Write-LogEntry -Message "Removing application provisioning package: $($AppProvisioningPackageName)"
             try {
                 Remove-AppxProvisionedPackage -PackageName $AppProvisioningPackageName -Online -ErrorAction Stop | Out-Null
-                Write-LogEntry -Value "Successfully removed application provisioning package: $AppProvisioningPackageName" -Outhost
+                Write-LogEntry -Message "Successfully removed application provisioning package: $AppProvisioningPackageName" -Outhost
             }
             catch [System.Exception] {
-                Write-LogEntry -Value "Failed removing AppxProvisioningPackage: $($_.Exception.Message)" -Severity 3 -Outhost
+                Write-LogEntry -Message "Failed removing AppxProvisioningPackage: $($_.Exception.Message)" -Severity 3 -Outhost
             }
         }
         else {
-            Write-LogEntry -Value "Unable to locate AppxProvisioningPackage for app: $($App.Name)" -Outhost
+            Write-LogEntry -Message "Unable to locate AppxProvisioningPackage for app: $($App.Name)" -Outhost
         }
 
     }
@@ -360,11 +369,11 @@ foreach ($App in $AppArrayList) {
     $p++
 }
 
-Write-LogEntry -Value ("Removed {0} built-in AppxPackage and AppxProvisioningPackage" -f $c) -Outhost
+Write-LogEntry -Message ("Removed {0} built-in AppxPackage and AppxProvisioningPackage" -f $c) -Outhost
 
 
 # White list of Features On Demand V2 packages
-Write-LogEntry -Value "Starting Features on Demand V2 removal process"
+Write-LogEntry -Message "Starting Features on Demand V2 removal process"
 $WhiteListOnDemand = "NetFX3|Tools.Graphics.DirectX|Tools.DeveloperMode.Core|Language|Browser.InternetExplorer|ContactSupport|OneCoreUAP|Media.WindowsMediaPlayer|Rsat"
 
 # Get Features On Demand that should be removed
@@ -401,4 +410,4 @@ catch [System.Exception] {
     Write-LogEntry -Message "Failed attempting to list Feature on Demand V2 packages: $($_.Exception.Message)" -Severity 3 -Outhost
 }
 # Complete
-Write-LogEntry -Value "Completed built-in AppxPackage and AppxProvisioningPackage removal process" -Outhost
+Write-LogEntry -Message "Completed built-in AppxPackage and AppxProvisioningPackage removal process" -Outhost

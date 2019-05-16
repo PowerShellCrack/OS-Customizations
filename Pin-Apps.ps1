@@ -18,7 +18,7 @@
                     Write "App '$appname' unpinned from Taskbar"
                 } else {
                     if (-not $path -eq "") {
-                        Pin-App-by-Path $path -Action $action
+                        Pin-AppXPath $path -Action $action
                     } else {
                         Write "'$appname' not found or 'Unpin from taskbar' not found on item!"
                     }
@@ -30,7 +30,7 @@
                     Write "App '$appname' pinned to Taskbar"
                 } else {
                     if (-not $path -eq "") {
-                        Pin-App-by-Path $path -Action $action
+                        Pin-AppXPath $path -Action $action
                     } else {
                         Write "'$appname' not found or 'Pin to taskbar' not found on item!"
                     }
@@ -51,7 +51,7 @@
                     Write "App '$appname' unpinned from Start"
                 } else {
                     if (-not $path -eq "") {
-                        Pin-App-by-Path $path -Action $action -start
+                        Pin-AppXPath $path -Action $action -start
                     } else {
                         Write "'$appname' not found or 'Unpin from Start' not found on item!"
                     }
@@ -63,7 +63,7 @@
                     Write "App '$appname' pinned to Start"
                 } else {
                     if (-not $path -eq "") {
-                        Pin-App-by-Path $path -Action $action -start
+                        Pin-AppXPath $path -Action $action -start
                     } else {
                         Write "'$appname' not found or 'Pin to Start' not found on item!"
                     }
@@ -75,7 +75,7 @@
     }
 }
 
-function Pin-AppbyPath([string]$Path, [string]$Action, [switch]$start) {
+function Pin-AppXPath([string]$Path, [string]$Action, [switch]$start) {
     if ($Path -eq "") {
         Write-Error -Message "You need to specify a Path" -ErrorAction Stop
     }

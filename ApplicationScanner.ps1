@@ -113,40 +113,48 @@ Function Get-ScriptPath {
     }
 }
 
-Function Import-SMSTSENV{
-    ## Get the name of this function
-    [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
+Function Get-SMSTSENV{
+    param([switch]$LogPath,[switch]$NoWarning)
     
-    try{
-        # Create an object to access the task sequence environment
-        $Script:tsenv = New-Object -COMObject Microsoft.SMS.TSEnvironment 
-        #test if variables exist
-        $tsenv.GetVariables()  #| % { Write-Output "$ScriptName - $_ = $($tsenv.Value($_))" }
+    Begin{
+        ## Get the name of this function
+        [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
     }
-    catch{
-        If(${CmdletName}){$prefix = "${CmdletName} ::" }Else{$prefix = "" }
-        Write-Warning ("{0}Task Sequence environment not detected. Running in stand-alone mode." -f $prefix)
-        
-        #set variable to null
-        $Script:tsenv = $null
+    Process{
+        try{
+            # Create an object to access the task sequence environment
+            $Script:tsenv = New-Object -COMObject Microsoft.SMS.TSEnvironment 
+            #test if variables exist
+            $tsenv.GetVariables()  #| % { Write-Output "$ScriptName - $_ = $($tsenv.Value($_))" }
+        }
+        catch{
+            If(${CmdletName}){$prefix = "${CmdletName} ::" }Else{$prefix = "" }
+            If(!$NoWarning){Write-Warning ("{0}Task Sequence environment not detected. Running in stand-alone mode." -f $prefix)}
+            
+            #set variable to null
+            $Script:tsenv = $null
+        }
+        Finally{
+            #set global Logpath
+            if ($tsenv){
+                #grab the progress UI
+                $Script:TSProgressUi = New-Object -ComObject Microsoft.SMS.TSProgressUI
+
+                # Query the environment to get an existing variable
+                # Set a variable for the task sequence log path
+                #$UseLogPath = $tsenv.Value("LogPath")
+                $UseLogPath = $tsenv.Value("_SMSTSLogPath")
+
+                # Convert all of the variables currently in the environment to PowerShell variables
+                $tsenv.GetVariables() | % { Set-Variable -Name "$_" -Value "$($tsenv.Value($_))" }
+            }
+            Else{
+                $UseLogPath = $env:Temp
+            }
+        }
     }
-    Finally{
-        #set global Logpath
-        if ($tsenv){
-            #grab the progress UI
-            $Script:TSProgressUi = New-Object -ComObject Microsoft.SMS.TSProgressUI
-
-            # Query the environment to get an existing variable
-            # Set a variable for the task sequence log path
-            #$Global:Logpath = $tsenv.Value("LogPath")
-            $Global:Logpath = $tsenv.Value("_SMSTSLogPath")
-
-            # Or, convert all of the variables currently in the environment to PowerShell variables
-            $tsenv.GetVariables() | % { Set-Variable -Name "$_" -Value "$($tsenv.Value($_))" }
-        }
-        Else{
-            $Global:Logpath = $env:TEMP
-        }
+    End{
+        If($LogPath){return $UseLogPath}
     }
 }
 
@@ -165,6 +173,7 @@ Function Format-DatePrefix{
     $CombinedDateTime = "$LogDate $LogTime"
     return ($LogDate + " " + $LogTime)
 }
+
 
 Function Write-LogEntry{
     param(
