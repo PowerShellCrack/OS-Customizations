@@ -1,7 +1,8 @@
 # OS-Customizations
 Variety of customization scripts such as app removal, local user, timezone
 
-
+## Project: 
+ - This is part of my <b>MDT automation Project</b>
 
 ## Scripts
  - ApplicationScanner.ps1	--> Montitors installations of applications. built to monitor McAfee EPO software pushes once agent is on system)
