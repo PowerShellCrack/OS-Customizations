@@ -293,7 +293,7 @@ Function Get-FolderSize{
     #>
     [cmdletbinding()]
     param(
-        [Parameter(Mandatory = $false,Position=0)]
+        [Parameter(Mandatory = $false,Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
         [Alias('Path')]
         [String[]]
         $BasePath = 'C:\', 
@@ -404,7 +404,7 @@ Function Get-FolderSize{
 
 function Display-MessageCleanup{
     param(
-        [Parameter(Mandatory=$true,Position=0)]
+        [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
         [ValidateNotNullOrEmpty()]
         [string]$Path,
         [Parameter(Mandatory=$true,Position=1)]
@@ -427,23 +427,9 @@ function Display-MessageCleanup{
     return $x 
 } 
 
-
-function Cleanup-FolderMessage{
-    param(
-        [Parameter(Mandatory=$true,Position=0)]
-        [ValidateNotNullOrEmpty()]
-        [string]$Path
-    )
-    ## Get the name of this function
-    [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
-
-    Write-LogEntry ("Removing files in {0}." -f $Path) -Source ${CmdletName} -Severity 2 -Outhost
-}
-
-
 function Tally-FolderSize{
     param(
-        [Parameter(Mandatory=$true,Position=0)]
+        [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
         [ValidateNotNullOrEmpty()]
         [string]$Path,
         [Parameter(Mandatory=$true,Position=1)]
@@ -458,33 +444,108 @@ function Tally-FolderSize{
 
 function Remove-FolderContent{ 
     param(
-        [Parameter(Mandatory=$true,Position=0)]
+        [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
         [ValidateNotNullOrEmpty()]
         [string]$Path
     )
-
+    Begin{
     ## Get the name of this function
-    [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
-
-    If(Test-Path $Path){
-        $a = Display-MessageCleanup $Path -When Before 
-        Cleanup-FolderMessage $Path  
-    
-        Remove-Item -Recurse $Path -Force -Verbose -ErrorAction SilentlyContinue -WarningAction SilentlyContinue | Out-Null
-    
-        $b = Display-MessageCleanup $Path -When After
- 
-        $total = $a-$b 
-        Tally-FolderSize $Path $total
-    } 
-    Else{
-        Write-LogEntry ("Unable to remove items from [{0}] because it does not exist" -f $Path) -Source ${CmdletName} -Severity 1 -Outhost
+        [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
     }
-    $a = 0 
-    $b = 0 
-    $total = 0 
+    Process{
+        If(Test-Path $Path){
+            #grab 
+            $a = Display-MessageCleanup $Path -When Before
+            Write-LogEntry ("Attempting to remove files in {0}." -f $Path) -Source ${CmdletName} -Severity 2 -Outhost
+            
+            Try{
+                #Remove all except folder contents of SMSTSlog and its logs
+                Get-ChildItem -Path $Path -Recurse | Where {($_.FullName -notlike '*SMSTSLog*') -and ($_.FullName -ne $Global:LogFilePath)} |
+                    Remove-Item -Recurse -Force -Verbose -ErrorAction SilentlyContinue -WarningAction SilentlyContinue | Out-Null
+        
+                #Remove All folders
+                #Remove-Item -Recurse $Path -Force -Verbose -ErrorAction SilentlyContinue -WarningAction SilentlyContinue | Out-Null
+        
+            } 
+            Catch [System.Management.Automation.ItemNotFoundException] {
+                Write-LogEntry ("Unable to remove item from [{0}] because it does not exist anylonger" -f $Path.FullName) -Source ${CmdletName} -Severity 2 -Outhost
+            }
+            Catch [System.UnauthorizedAccessException]{
+                Write-LogEntry ("[{0}] is in use. Unable to remove item from " -f $Path.FullName) -Source ${CmdletName} -Severity 2 -Outhost
+            }
+            Catch{
+                $ErrorMessage = $_.Exception.Message
+                Write-LogEntry ("Unable to remove item from [{0}]. Error [{1}]" -f $Path.FullName,$ErrorMessage) -Source ${CmdletName} -Severity 3 -Outhost
+            }
+            Finally{
+                $b = Display-MessageCleanup $Path -When After 
+                $total = $a-$b 
+                Tally-FolderSize $Path $total
+            }
+        } 
+        Else{
+            Write-LogEntry ("Unable to remove items from [{0}] because it does not exist" -f $Path) -Source ${CmdletName} -Severity 1 -Outhost
+        }
+    }
+    End{
+        $a = 0 
+        $b = 0 
+        $total = 0
+    }
 } 
  
+
+function Initialize-DiskCleanupMgr{ 
+    param(
+        [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
+        [ValidateSet("All","Active Setup Temp Folders","Content Indexer Cleaner","Device Driver Packages","Downloaded Program Files",
+        "GameNewsFiles","GameStatisticsFiles","GameUpdateFiles","Internet Cache Files","Offline Pages Files","Old ChkDsk Files",
+        "Previous Installations","Recycle Bin","Service Pack Cleanup","Setup Log Files","System error memory dump files","System error minidump files",
+        "Temporary Setup Files","Temporary Sync Files","Thumbnail Cache","Update Cleanup","Upgrade Discarded Files","Windows Defender",
+        "Windows Error Reporting Archive Files","Windows Error Reporting Queue Files","Windows Error Reporting System Archive Files",
+        "Windows Error Reporting System Queue Files","Windows Error Reporting Temp Files","Windows ESD installation files","Windows Upgrade Log Files")]
+        [string]$VolumeCache = "All"
+    )
+    Begin{
+        ## Get the name of this function
+        [string]${CmdletName} = $PSCmdlet.MyInvocation.MyCommand.Name
+           
+        $HKLM = [UInt32] "0x80000002"
+        $strKeyPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches" 
+        If($VolumeCache -eq "All"){
+            $subkeys = Get-ChildItem -Path $strKeyPath -Name 
+        }
+        Else{
+            #$strKeyPath = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches\Windows Upgrade Log Files"
+            $subkeys = $VolumeCache
+        }
+        $strValueName = "StateFlags0065"
+    }
+    Process{
+        #set the cleanup Stateflags registry keys for each volume prior to running cleanup
+        ForEach($subkey in $subkeys){
+            New-ItemProperty -Path $strKeyPath\$subkey -Name $strValueName -PropertyType DWord -Value 2 -ea SilentlyContinue -wa SilentlyContinue | Out-Null
+        }
+
+        Try{
+            Write-LogEntry "Starting Windows disk Clean up Tool" -Source ${CmdletName} -Severity 1 -Outhost
+            Start-Process cleanmgr -ArgumentList "/sagerun:65" -Wait -NoNewWindow -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
+        }
+        Catch{
+            $ErrorMessage = $_.Exception.Message
+            Write-LogEntry ("Windows Disk Clean up Tool failed to run for Volume Cache [{0}]. Error [{1}]" -f $VolumeCache,$ErrorMessage) -Source ${CmdletName} -Severity 3 -Outhost
+        }
+        Finally{
+            Write-LogEntry "Clean Up completed" -Source ${CmdletName} -Severity 1 -Outhost
+        }
+    }
+    End{
+        #remove the cleanup Stateflags registry keys for each volume after running cleanup
+        ForEach($subkey in $subkeys){
+            Remove-ItemProperty -Path $strKeyPath\$subkey -Name $strValueName -ea SilentlyContinue -wa SilentlyContinue | Out-Null
+        }
+    }
+}
 
 ##*===========================================================================
 ##* VARIABLES
@@ -506,8 +567,7 @@ Write-Host "logging to file: $LogFilePath" -ForegroundColor Cyan
 #variables
 $objShell = New-Object -ComObject Shell.Application    
 $Recyclebin = $objShell.Namespace(0xA) 
-$temp = get-ChildItem "env:\TEMP"    
-$temp2 = $temp.Value    
+$temp = (Get-ChildItem "env:\TEMP").Value
 $WinTemp = "$env:SystemDrive\Windows\Temp\*" 
 $CBS="$env:SystemDrive\Windows\Logs\CBS\*"  
 $swtools="$env:SystemDrive\swtools\*" 
@@ -516,19 +576,13 @@ $swsetup="$env:SystemDrive\swsetup\*"
 $downloads="$env:SystemDrive\users\administrator\downloads\*" 
 $Prefetch="$env:SystemDrive\Windows\Prefetch\*" 
 $DowloadeUpdate="$env:SystemDrive\Windows\SoftwareDistribution\Download\*"
-
-$HKLM = [UInt32] "0x80000002"
-$strKeyPath   = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches"
-$strValueName = "StateFlags0065"
-$subkeys = Get-ChildItem -Path $strKeyPath -Name 
-
     
 ##*===========================================================================
 ##* MAIN
 ##*===========================================================================
 # Remove temp files located in "C:\Users\USERNAME\AppData\Local\Temp"
-Write-LogEntry "Emptying $temp2..." -Severity 1 -Outhost
-Remove-FolderContent "$temp2\*"
+Write-LogEntry "Emptying $temp..." -Severity 1 -Outhost
+Remove-FolderContent "$temp\*"
 
 # Remove content of folder created during installation of driver
 Write-LogEntry "Emptying $swtools..." -Severity 1 -Outhost
@@ -551,42 +605,18 @@ Write-LogEntry "Emptying Recycle Bin..." -Severity 1 -Outhost
 $Recyclebin.items() | %{ Remove-FolderContent($_.path)}
  
 # Remove Windows Temp Directory
-Write-LogEntry "Emptying $WinTemp..." -Severity 1 -Outhost  
+Write-LogEntry "Emptying $WinTemp..." -Severity 1 -Outhost
 Remove-FolderContent $WinTemp 
 
 # Remove Prefetch folder content
-Write-LogEntry "Emptying $Prefetch..." -Severity 1 -Outhost 
+Write-LogEntry "Emptying $Prefetch..." -Severity 1 -Outhost
 Remove-FolderContent $Prefetch
     
 # Remove CBS log file
-Write-LogEntry "Emptying $CBS..." -Severity 1 -Outhost 
+Write-LogEntry "Emptying $CBS..." -Severity 1 -Outhost
 Remove-FolderContent $CBS
 
 # Remove downloaded update 
-#Write-LogEntry "Emptying $DowloadeUpdate..." -Severity 1 -Outhost 
-#Remove-FolderContent $DowloadeUpdate
- 
-#6# Running Disk Clean up Tool
-#Write-LogEntry "starting Windows disk Clean up Tool" -Severity 1 -Outhost    
-#cleanmgr.exe /SAGESET:50 
-#sleep 30 
-#cleanmgr.exe /SAGERUN:50   
-   
-#Write-LogEntry "**Clean Up completed**" 
+Remove-FolderContent $DowloadeUpdate
 
-#set the cleanup Stateflags registry keys for each volume prior to running cleanup
-ForEach($subkey in $subkeys){
-    New-ItemProperty -Path $strKeyPath\$subkey -Name $strValueName -PropertyType DWord -Value 2 -ea SilentlyContinue -wa SilentlyContinue | Out-Null
-}
-
-Write-LogEntry "Starting Windows disk Clean up Tool" -Severity 1 -Outhost 
-Start-Process cleanmgr -ArgumentList "/sagerun:65" -Wait -NoNewWindow -ErrorAction SilentlyContinue -WarningAction SilentlyContinue
-Write-LogEntry "**Clean Up completed**"
-
-#remove the cleanup Stateflags registry keys for each volume prior to running cleanup
-ForEach($subkey in $subkeys){
-    Remove-ItemProperty -Path $strKeyPath\$subkey -Name $strValueName -ea SilentlyContinue -wa SilentlyContinue | Out-Null
-}
-
-##End of execution## 
-##### End of the Script ##### ad   
+Initialize-DiskCleanupMgr -VolumeCache All
