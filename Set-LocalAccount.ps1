@@ -1,6 +1,6 @@
-﻿# Parameters from the commandline to set the default variables
-<# 
-' Modded date: 05/18/2018
+﻿<#
+ 
+' Modded date: 05/24/2018
 ' Modded Author: Richard Tracy
 ' Mods: 
 
