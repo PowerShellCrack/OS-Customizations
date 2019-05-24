@@ -1,10 +1,43 @@
-﻿<#
- 
-' Modded date: 05/24/2018
-' Modded Author: Richard Tracy
-' Mods: 
+﻿<#	
+    .SYNOPSIS
+        Creates new local administrator account	
+    
+    .DESCRIPTION
+		 Creates new local administrator account and can disable builtin
 
-#>
+    .INPUTS
+        
+    .PARAMETER Username
+        New admin account username. will check if exists
+    
+    .PARAMETER Password
+        New admin account password, may fail if password complexity set
+    
+    .PARAMETER Description
+        New admin account description
+
+    .PARAMETER NeverExpire
+        Set account to never expire
+
+    .PARAMETER DisableBuiltin
+        Disable builtin admin account. Safety checks to ensure another loacl admin account exist befroe disabling the ONLY admin account
+
+    .NOTES
+        Author:         Richard Tracy
+        Last Update:    05/24/2019
+        Version:        1.1.0
+
+    .EXAMPLE
+         .\Set-LocalAccount.ps1 -Username ".\xAdmin" -Password "Adminpassword" -Description "Secondary Administrator Account" -NeverExpire -DisableBuiltin
+
+    .LINK
+
+
+    .LOGS
+        1.1.0 - May 24, 2019 - Added local admin safety check and comments and synopsis
+        1.0.0 - Nov 20, 2018 - initial 
+ 
+#> 
 [CmdletBinding()]
     param(
       [Parameter(Mandatory = $True)]
