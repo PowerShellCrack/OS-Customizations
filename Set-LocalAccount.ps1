@@ -11,8 +11,8 @@
       [string]$Username,
       [Parameter(Mandatory = $True)]
       [String]$Password,
-      [switch]$NeverExpire,
       [string]$Description,
+      [switch]$NeverExpire,
       [switch]$DisableBuiltin
     )
 
@@ -26,11 +26,16 @@ if ($Username -match '\\([^\\]+)$'){
     $LocalUser = $Username
 }
 
+#Set Boolean for Never expire
+If(!$NeverExpire){$bExpire = $false}Else{$bExpire = $true}
+
+#check to see if local user already exists
 $UserAccount = Get-LocalUser -Name $LocalUser -ErrorAction SilentlyContinue
 If(!$UserAccount)
 {
+    #attempt to create new account and add it to the local adminsitrators group
     Try{
-        New-LocalUser -Name $LocalUser -Description $Description -AccountNeverExpires:$NeverExpire -Password $SecurePassword -PasswordNeverExpires:$NeverExpire
+        New-LocalUser -Name $LocalUser -Description $Description -AccountNeverExpires:$bExpire -Password $SecurePassword -PasswordNeverExpires:$bExpire
         Add-LocalGroupMember -Group Administrators -Member $LocalUser
         Write-Host ("Local User Acount [{0}] built successfully!" -f $Username) -ForegroundColor Green
     }
@@ -39,18 +44,34 @@ If(!$UserAccount)
     }
 }
 Else{
+    #if account already exists, reset password and add it to the local adminsitrators group
     Write-Host ("User account [{0}] already exists, reseting password and checking admin permissions..." -f $Username) -ForegroundColor Yellow
-    Set-LocalUser -Name $LocalUser -Description $Description -AccountNeverExpires:$NeverExpire -Password $SecurePassword -PasswordNeverExpires:$NeverExpire
+    Set-LocalUser -Name $LocalUser -Description $Description -AccountNeverExpires:$bExpire -Password $SecurePassword -PasswordNeverExpires:$bExpire
     
+    #check to see if local user is already an admin
     $isAdmin = (Get-LocalGroupMember Administrators).Name -contains $LocalUser
     If($isAdmin){
         Write-Host ("User account [{0}] is an administrator already." -f $Username) -ForegroundColor Gray
-    }Else{
+    }
+    Else{
         Add-LocalGroupMember -Group Administrators -Member $LocalUser
     }
 }
 
+
+
 If($DisableBuiltin){
-    Disable-LocalUser -Name Administrator -Confirm:$false
+    #get current name of builtin administrator acount (this could be renamed if GPO is set)
+    $builtinAdmin = Get-LocalUser | Where{$_.Description -eq "Built-in account for administering the computer/domain"}
+
+    #check to ensure at least one OTHER acount is a local admin
+    If( ((Get-LocalGroupMember Administrators) | Where {$_.PrincipalSource -eq 'Local'}).count -gt 1){
+        Write-Host ("Disabling Builtin local Administrator account [{0}]" -f $builtinAdmin.Name) -ForegroundColor Gray
+        #disable the bultin account
+        Disable-LocalUser -Name $builtinAdmin.Name -Confirm:$false | Out-Null
+    }
+    Else{
+        Write-Host ("Unable to disable local Administrator account [{0}] because there is no other local administrator account that exists." -f $builtinAdmin.Name) -ForegroundColor Yellow
+    }
 }
 
