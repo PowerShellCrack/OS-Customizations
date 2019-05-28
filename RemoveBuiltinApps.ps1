@@ -61,7 +61,10 @@ Function Get-ScriptPath {
 }
 
 Function Get-SMSTSENV{
-    param([switch]$LogPath,[switch]$NoWarning)
+    param(
+        [switch]$ReturnLogPath,
+        [switch]$NoWarning
+    )
     
     Begin{
         ## Get the name of this function
@@ -71,8 +74,6 @@ Function Get-SMSTSENV{
         try{
             # Create an object to access the task sequence environment
             $Script:tsenv = New-Object -COMObject Microsoft.SMS.TSEnvironment 
-            #test if variables exist
-            $tsenv.GetVariables()  #| % { Write-Output "$ScriptName - $_ = $($tsenv.Value($_))" }
         }
         catch{
             If(${CmdletName}){$prefix = "${CmdletName} ::" }Else{$prefix = "" }
@@ -83,27 +84,33 @@ Function Get-SMSTSENV{
         }
         Finally{
             #set global Logpath
-            if ($tsenv){
+            if ($Script:tsenv){
                 #grab the progress UI
                 $Script:TSProgressUi = New-Object -ComObject Microsoft.SMS.TSProgressUI
 
-                # Query the environment to get an existing variable
-                # Set a variable for the task sequence log path
-                #$UseLogPath = $tsenv.Value("LogPath")
-                $UseLogPath = $tsenv.Value("_SMSTSLogPath")
-
                 # Convert all of the variables currently in the environment to PowerShell variables
                 $tsenv.GetVariables() | % { Set-Variable -Name "$_" -Value "$($tsenv.Value($_))" }
+                
+                # Query the environment to get an existing variable
+                # Set a variable for the task sequence log path
+                
+                #Something like: C:\MININT\SMSOSD\OSDLOGS
+                #[string]$LogPath = $tsenv.Value("LogPath")
+                #Somthing like C:\WINDOWS\CCM\Logs\SMSTSLog
+                [string]$LogPath = $tsenv.Value("_SMSTSLogPath")
+                
             }
             Else{
-                $UseLogPath = $env:Temp
+                [string]$LogPath = $env:Temp
             }
         }
     }
     End{
-        If($LogPath){return $UseLogPath}
+        If($ReturnLogPath){return $LogPath}
     }
 }
+
+
 
 Function Format-ElapsedTime($ts) {
     $elapsedTime = ""
@@ -289,7 +296,7 @@ $scriptPath = Get-ScriptPath
 #build log name
 [string]$FileName = $scriptBaseName +'.log'
 #build global log fullpath
-$Global:LogFilePath = Join-Path (Get-SMSTSENV -LogPath -NoWarning) -ChildPath $FileName
+[string]$Global:LogFilePath = Join-Path (Get-SMSTSENV -ReturnLogPath -NoWarning) -ChildPath $FileName
 Write-Host "logging to file: $LogFilePath" -ForegroundColor Cyan
 
 ##*===========================================================================
