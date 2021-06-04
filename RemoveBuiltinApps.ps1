@@ -1,22 +1,56 @@
 <#
+	.SYNOPSIS
+        Remove built-in apps (modern apps) from Windows 10 all Versions
+
+    .DESCRIPTION
+		Remove Built-in apps when creating a Windows 10 reference image using a whitelist.
+        Utilizes MDT/SCCM TaskSequence property control
+            Configurable using custom variables in MDT/SCCM
+
 	.NOTES
 	===========================================================================
 	 Created with: 	Powershell
 	 Created by:   	Richard Tracy
 	 Filename:     Invoke-RemoveBuiltinApps.ps1
 	===========================================================================
-	.DESCRIPTION
-		Remove Built-in apps when creating a Windows 10 reference image
-    .Modifed:
-        https://www.scconfigmgr.com/2016/03/01/remove-built-in-apps-when-creating-a-windows-10-reference-image/
 
-     In case you have removed them for good, you can try to restore the files using installation medium as follows
-        New-Item C:\Mnt -Type Directory | Out-Null
-        dism /Mount-Image /ImageFile:D:\sources\install.wim /index:1 /ReadOnly /MountDir:C:\Mnt
-        robocopy /S /SEC /R:0 "C:\Mnt\Program Files\WindowsApps" "C:\Program Files\WindowsApps"
-        dism /Unmount-Image /Discard /MountDir:C:\Mnt
-        Remove-Item -Path C:\Mnt -Recurse
+    .INFO
+        Author:         Richard Tracy
+        Email:          richard.tracy@hotmail.com
+        Twitter:        @rick2_1979
+        Website:        www.powershellcrack.com
+        Last Update:    04/04/2019
+        Version:        2.0.0
+        Thanks to:      @NickolajA
+
+    .DISCLOSURE
+        THE SCRIPT IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+        OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. BY USING OR DISTRIBUTING THIS SCRIPT, YOU AGREE THAT IN NO EVENT
+        SHALL RICHARD TRACY OR ANY AFFILATES BE HELD LIABLE FOR ANY DAMAGES WHATSOEVER RESULTING FROM USING OR DISTRIBUTION OF THIS SCRIPT, INCLUDING,
+        WITHOUT LIMITATION, ANY SPECIAL, CONSEQUENTIAL, INCIDENTAL OR OTHER DIRECT OR INDIRECT DAMAGES. BACKUP UP ALL DATA BEFORE PROCEEDING.
+
+    .NOTES
+        In case you have removed the apps for good, you can try to restore the files using installation ISO as follows
+        Insert or mount ISO
+        New-Item C:\Mount -Type Directory | Out-Null
+        DISM /Mount-Image /ImageFile:D:\sources\install.wim /index:1 /ReadOnly /MountDir:C:\Mount
+        robocopy /S /SEC /R:0 "C:\Mount\Program Files\WindowsApps" "C:\Program Files\WindowsApps"
+        DISM /Unmount-Image /Discard /MountDir:C:\Mount
+        Remove-Item -Path C:\Mount -Recurse
+
+    .CHANGE LOGS
+        2.0.1 - Dec 7, 2019 - Added additional info and disclosure
+        2.0.0 - Jun 4, 2019  - added progress bar for tasksequence
+        1.0.1 - May 30, 2019 - fixed Write-LogEntry
+        1.0.0 - May 16, 2018 - initial; forked from
+
+    .LINK
+         - https://docs.microsoft.com/en-us/windows/application-management/apps-in-windows-10
+         - https://www.scconfigmgr.com/2016/03/01/remove-built-in-apps-when-creating-a-windows-10-reference-image/
+         - https://github.com/SCConfigMgr/ConfigMgr/blob/master/Operating%20System%20Deployment/Invoke-RemoveBuiltinApps.ps1
+
 #>
+
 
 
 ##*===========================================================================
@@ -103,6 +137,7 @@ $scriptPath = Get-ScriptPath
 
 $FunctionsPath = Join-Path $scriptDirectory -ChildPath 'Functions'
 
+
 ##*========================================================================
 ##* Additional Runtime Function - REQUIRED
 ##*========================================================================
@@ -146,7 +181,7 @@ $WhiteListedApps = @(
 
 $p = 1
 $c = 0
-# Loop through the list of appx packages
+# Loop through the list of All installed appx packages
 foreach ($App in $AppArrayList) {
 
     # If application name not in appx package white list, remove AppxPackage and AppxProvisioningPackage

@@ -156,6 +156,7 @@ $scriptPath = Get-ScriptPath
 
 $FunctionsPath = Join-Path $scriptDirectory -ChildPath 'Functions'
 
+
 ##*========================================================================
 ##* Additional Runtime Function - REQUIRED
 ##*========================================================================
