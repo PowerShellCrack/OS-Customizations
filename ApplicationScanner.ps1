@@ -154,7 +154,7 @@ $scriptPath = Get-ScriptPath
 [string]$scriptName = Split-Path $scriptPath -Leaf
 [string]$scriptBaseName = [System.IO.Path]::GetFileNameWithoutExtension($scriptName)
 
-$FunctionsPath = Join-Path $scriptDirectory -ChildPath 'Functions'
+$FunctionPath = Join-Path $scriptDirectory -ChildPath 'Functions'
 
 
 ##*========================================================================
