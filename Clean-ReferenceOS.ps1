@@ -141,8 +141,6 @@ Write-Host "Logging to file: $LogFilePath" -ForegroundColor Cyan
 ##* MAIN
 ##*========================================================================
 [int]$OSBuildNumber = (Get-WmiObject -Class Win32_OperatingSystem).BuildNumber
-[string]$Global:LogFilePath = Join-Path (Get-SMSTSENV -ReturnLogPath -NoWarning) -ChildPath $FileName
-Write-Host "logging to file: $LogFilePath" -ForegroundColor Cyan
 
 #variables
 $objShell = New-Object -ComObject Shell.Application

@@ -171,7 +171,7 @@ function Check-InstalledApplication{
     # loop it and check if software is installed
     # mark it as true
     Foreach($App in $Applications){
-        Write-LogEntry "Checking for install application [$App]" -Source ${CmdletName} -Severity 3 -Outhost
+        Write-LogEntry "Checking for install application [$App]" -Source ${CmdletName} -Severity 1 -Outhost
 
         $AppInstalledx64 = Get-InstalledApplication -Application $App -Arch x64
         $AppInstalledx86 = Get-InstalledApplication -Application $App -Arch x86

@@ -165,7 +165,7 @@ function Remove-FolderContent{
         If(Test-Path $Path){
             #grab
             $a = Display-MessageCleanup $Path -When Before
-            Write-LogEntry ("Attempting to remove files in {0}." -f $Path) -Source ${CmdletName} -Severity 2 -Outhost
+            Write-LogEntry ("Attempting to remove files in {0}." -f $Path) -Source ${CmdletName} -Severity 1 -Outhost
 
             Try{
                 #Remove all except folder contents of SMSTSlog and its logs
@@ -177,7 +177,7 @@ function Remove-FolderContent{
 
             }
             Catch [System.Management.Automation.ItemNotFoundException] {
-                Write-LogEntry ("Unable to remove item from [{0}] because it does not exist anylonger" -f $Path.FullName) -Source ${CmdletName} -Severity 2 -Outhost
+                Write-LogEntry ("Unable to remove item from [{0}] because it does not exist any longer" -f $Path.FullName) -Source ${CmdletName} -Severity 2 -Outhost
             }
             Catch [System.UnauthorizedAccessException]{
                 Write-LogEntry ("[{0}] is in use. Unable to remove item from " -f $Path.FullName) -Source ${CmdletName} -Severity 2 -Outhost
@@ -245,7 +245,7 @@ function Initialize-DiskCleanupMgr{
             Write-LogEntry ("Windows Disk Clean up Tool failed to run for Volume Cache [{0}]. Error [{1}]" -f $VolumeCache,$ErrorMessage) -Source ${CmdletName} -Severity 3 -Outhost
         }
         Finally{
-            Write-LogEntry "Clean Up completed" -Source ${CmdletName} -Severity 1 -Outhost
+            Write-LogEntry "Clean Up completed" -Source ${CmdletName} -Severity 0 -Outhost
         }
     }
     End{
